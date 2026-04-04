@@ -1,26 +1,24 @@
-import { DEMO_SCENARIOS } from './scenarios.js';
-
 export function initHUD() {
   const hud = document.createElement('div');
   hud.id = 'hud';
   hud.innerHTML = `
-    <div id="hud-top-left"    class="hud-box">BRAKE: NONE</div>
-    <div id="hud-top-center"  class="hud-box">SPEED: MAINTAIN</div>
-    <div id="hud-top-right"   class="hud-box">LANE: KEEP</div>
-    <div id="hud-bottom-left" class="hud-box risk-low">RISK: LOW</div>
-    <div id="hud-scenario"    class="hud-scenario"></div>
-    <div id="hud-demo-controls" class="hud-demo-controls">
-      <button id="btn-prev">&#9664;</button>
-      <div id="demo-dots"></div>
-      <button id="btn-next">&#9654;</button>
-      <button id="btn-pause">&#10074;&#10074;</button>
+    <div id="hud-top-left"       class="hud-box">BRAKE: NONE</div>
+    <div id="hud-top-center"     class="hud-box">SPEED: MAINTAIN</div>
+    <div id="hud-top-right"      class="hud-box">LANE: KEEP</div>
+    <div id="hud-bottom-left"    class="hud-box risk-low">RISK: LOW</div>
+    <div id="hud-lane-info"      class="hud-box">LANE 1/2</div>
+    <div id="hud-lane-indicator" class="hud-box keep">
+      <span class="lane-label">LANE DECISION</span>
+      <span class="lane-arrow">&#8679;</span>
+      <span class="lane-target">KEEP LANE</span>
     </div>
   `;
   document.body.appendChild(hud);
 }
 
-export function updateHUD(data, demoIndex, onStep, onPause) {
-  const d = data.decisions;
+export function updateHUD(data) {
+  const d = data.decisions ?? {};
+  const l = data.lane_info ?? null;
 
   const set = (id, text, cls) => {
     const el = document.getElementById(id);
@@ -34,41 +32,49 @@ export function updateHUD(data, demoIndex, onStep, onPause) {
   set('hud-top-right',   `LANE: ${(d.lane   || 'keep').toUpperCase()}`);
   set('hud-bottom-left', `RISK: ${(d.risk   || 'low').toUpperCase()}`,      `hud-box risk-${d.risk || 'low'}`);
 
-  const scenario = DEMO_SCENARIOS[demoIndex];
-  const scenEl = document.getElementById('hud-scenario');
-  if (scenEl && scenario) {
-    scenEl.innerHTML = `
-      <span class="scen-index">${demoIndex + 1}/${DEMO_SCENARIOS.length}</span>
-      <span class="scen-name">${scenario.name}</span>
-      <span class="scen-desc">${scenario.description}</span>
-    `;
+  // Lane info box (current lane / total)
+  const laneEl = document.getElementById('hud-lane-info');
+  if (laneEl) {
+    if (l) {
+      const current  = l.current_lane ?? '?';
+      const total    = l.num_lanes    ?? '?';
+      const mainRoad = l.is_main_road ? ' • MAIN' : '';
+      laneEl.textContent = `LANE ${current}/${total}${mainRoad}`;
+      laneEl.style.display = 'block';
+    } else {
+      laneEl.style.display = 'none';
+    }
   }
 
-  // Dots
-  const dotsEl = document.getElementById('demo-dots');
-  if (dotsEl) {
-    dotsEl.innerHTML = DEMO_SCENARIOS.map((_, i) =>
-      `<span class="dot ${i === demoIndex ? 'active' : ''}" data-i="${i}"></span>`
-    ).join('');
-    dotsEl.querySelectorAll('.dot').forEach(dot =>
-      dot.addEventListener('click', () => onStep(Number(dot.dataset.i)))
-    );
-  }
+  updateLaneIndicator(d.lane || 'keep', l);
+}
 
-  // Wire buttons once (guard with dataset flag)
-  const prev = document.getElementById('btn-prev');
-  const next = document.getElementById('btn-next');
-  const pause = document.getElementById('btn-pause');
-  if (prev && !prev.dataset.wired) {
-    prev.dataset.wired = '1';
-    prev.addEventListener('click', () => onStep(-1));
-  }
-  if (next && !next.dataset.wired) {
-    next.dataset.wired = '1';
-    next.addEventListener('click', () => onStep(1));
-  }
-  if (pause && !pause.dataset.wired) {
-    pause.dataset.wired = '1';
-    pause.addEventListener('click', () => onPause(pause));
+function updateLaneIndicator(lane, laneInfo) {
+  const el = document.getElementById('hud-lane-indicator');
+  if (!el) return;
+
+  const arrowEl  = el.querySelector('.lane-arrow');
+  const targetEl = el.querySelector('.lane-target');
+
+  const current = laneInfo?.current_lane ?? null;
+  const total   = laneInfo?.num_lanes    ?? null;
+
+  if (lane === 'change_left') {
+    el.className = 'hud-box change-left';
+    arrowEl.innerHTML    = '&#8678;';
+    const targetLane     = current ? current - 1 : null;
+    targetEl.textContent = targetLane ? `MOVE TO LANE ${targetLane}` : 'CHANGE LEFT';
+
+  } else if (lane === 'change_right') {
+    el.className = 'hud-box change-right';
+    arrowEl.innerHTML    = '&#8680;';
+    const targetLane     = current ? current + 1 : null;
+    targetEl.textContent = targetLane && total && targetLane <= total
+      ? `MOVE TO LANE ${targetLane}` : 'CHANGE RIGHT';
+
+  } else {
+    el.className = 'hud-box keep';
+    arrowEl.innerHTML    = '&#8679;';
+    targetEl.textContent = current && total ? `STAY IN LANE ${current}` : 'KEEP LANE';
   }
 }

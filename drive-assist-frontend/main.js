@@ -1,9 +1,8 @@
 import * as THREE from 'three';
-import { DEMO_SCENARIOS } from './scenarios.js';
 import { clearDynamicRoad, buildRoad, buildJunction } from './road.js';
 import { initEgoVehicle, createObjectMesh, disposeObject } from './models.js';
 import { initHUD, updateHUD } from './hud.js';
-import { connectWebSocket, isConnected } from './websocket.js';
+import { connectWebSocket } from './websocket.js';
 
 /* =========================
    SCENE GLOBALS
@@ -13,17 +12,11 @@ let egoVehicle;
 let laneMarkers = [];
 const detectedObjects = new Map();
 
+let currentLaneInfo = { num_lanes: 2, current_lane: 1, is_main_road: false };
 let egoTargetX      = 0;
 let egoCurrentSpeed = 0.08;
 let egoTargetSpeed  = 0.08;
 let lastFrameTime   = performance.now();
-
-/* =========================
-   DEMO STATE
-========================= */
-let demoIndex  = 0;
-let demoTimer  = null;
-let demoPaused = false;
 
 /* =========================
    BOOT
@@ -37,15 +30,11 @@ async function init() {
 
   connectWebSocket(
     async (data) => {
-      if (demoTimer) clearTimeout(demoTimer);
       await handleIncomingData(data);
-      updateHUD(data, demoIndex, handleDemoStep, handlePause);
+      updateHUD(data);
     },
-    () => { if (demoTimer) clearTimeout(demoTimer); }
+    () => console.warn('[WS] disconnected')
   );
-
-  await applyScenario(DEMO_SCENARIOS[0]);
-  scheduleNextDemo();
 
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -122,6 +111,8 @@ function initStaticGround() {
 async function handleIncomingData(data) {
   const norm = normalizeData(data);
 
+  if (norm.lane_info) currentLaneInfo = norm.lane_info;
+
   clearDynamicRoad(scene);
   if (norm.road) {
     buildRoad(scene, norm.road);
@@ -130,30 +121,28 @@ async function handleIncomingData(data) {
 
   applyDecisions(norm.decisions);
   await syncDetections(norm.detections);
+
+  data.lane_info = norm.lane_info;
 }
 
 function normalizeData(data) {
-  if (data.detections && data.decisions) {
-    return {
-      timestamp:  data.timestamp ?? 0,
-      frame:      data.frame     ?? 0,
-      road:       data.road      ?? { type: 'straight', lanes: 2, width: 12, length: 200, separator: 'dashed_white' },
-      junction:   data.junction  ?? null,
-      detections: data.detections,
-      decisions:  data.decisions,
-    };
-  }
+  const laneInfo = data.lane_info ?? null;
+  const road = data.road ?? {
+    type:      'straight',
+    lanes:     laneInfo?.num_lanes ?? 2,
+    width:     (laneInfo?.num_lanes ?? 2) * 6,
+    length:    200,
+    separator: laneInfo?.is_main_road ? 'solid_yellow' : 'dashed_white',
+  };
+
   return {
     timestamp:  data.timestamp ?? 0,
     frame:      data.frame     ?? 0,
-    road:       { type: 'straight', lanes: 2, width: 12, length: 200, separator: 'dashed_white' },
-    junction:   null,
-    detections: (data.objects || []).map((obj, i) => ({
-      id: obj.id ?? i, class: obj.class || obj.type || 'unknown',
-      distance_m: obj.distance_m ?? 10, position: obj.position || 'front',
-      junction_road: false,
-    })),
-    decisions: data.decisions || { brake: 'none', lane: 'keep', speed: 'maintain', risk: 'low' },
+    road,
+    junction:   data.junction  ?? null,
+    detections: data.detections ?? [],
+    decisions:  data.decisions  ?? { brake: 'none', lane: 'keep', speed: 'maintain', risk: 'low' },
+    lane_info:  laneInfo,
   };
 }
 
@@ -201,53 +190,30 @@ async function syncDetections(detections) {
   }
 }
 
+function laneToX(laneNumber, numLanes) {
+  const laneWidth  = 3.5;
+  const totalWidth = numLanes * laneWidth;
+  const leftEdge   = -totalWidth / 2 + laneWidth / 2;
+  return leftEdge + (laneNumber - 1) * laneWidth;
+}
+
 function detectionToWorld(det) {
   const pos      = (det.position || 'front').toLowerCase();
   const distance = Number(det.distance_m ?? 10);
-  const posMap   = {
-    front:       { x:  0.0, z: -distance },
-    front_left:  { x: -2.5, z: -distance },
-    front_right: { x:  2.5, z: -distance },
-    left:        { x: -8.0, z: -28 },
-    right:       { x:  8.0, z: -28 },
+  const numLanes = currentLaneInfo.num_lanes    ?? 2;
+  const egoLane  = currentLaneInfo.current_lane ?? 1;
+  const egoX     = laneToX(egoLane, numLanes);
+
+  const posMap = {
+    front:       { x: egoX,       z: -distance },
+    front_left:  { x: egoX - 3.5, z: -distance },
+    front_right: { x: egoX + 3.5, z: -distance },
+    left:        { x: egoX - 3.5, z: -Math.min(distance, 40) },
+    right:       { x: egoX + 3.5, z: -Math.min(distance, 40) },
   };
-  const p = posMap[pos] ?? { x: 0, z: -distance };
+
+  const p = posMap[pos] ?? { x: egoX, z: -distance };
   return new THREE.Vector3(p.x, 0, p.z);
-}
-
-/* =========================
-   DEMO PLAYBACK
-========================= */
-async function applyScenario(scenario) {
-  await handleIncomingData(scenario.data);
-  updateHUD(scenario.data, demoIndex, handleDemoStep, handlePause);
-}
-
-function scheduleNextDemo() {
-  if (demoTimer) clearTimeout(demoTimer);
-  if (demoPaused || isConnected()) return;
-  demoTimer = setTimeout(async () => {
-    demoIndex = (demoIndex + 1) % DEMO_SCENARIOS.length;
-    await applyScenario(DEMO_SCENARIOS[demoIndex]);
-    scheduleNextDemo();
-  }, DEMO_SCENARIOS[demoIndex].duration);
-}
-
-async function handleDemoStep(indexOrDelta) {
-  if (demoTimer) clearTimeout(demoTimer);
-  if (indexOrDelta >= 0 && indexOrDelta < DEMO_SCENARIOS.length) {
-    demoIndex = indexOrDelta;
-  } else {
-    demoIndex = (demoIndex + indexOrDelta + DEMO_SCENARIOS.length) % DEMO_SCENARIOS.length;
-  }
-  await applyScenario(DEMO_SCENARIOS[demoIndex]);
-  scheduleNextDemo();
-}
-
-function handlePause(btn) {
-  demoPaused = !demoPaused;
-  btn.innerHTML = demoPaused ? '&#9654;' : '&#10074;&#10074;';
-  if (!demoPaused) scheduleNextDemo();
 }
 
 /* =========================
