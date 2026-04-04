@@ -14,32 +14,22 @@ MODEL_PATH = "yolov8n.pt"
 CONF_THRESHOLD = 0.3
 
 # ===============================
-# HELPER FUNCTIONS
-# ===============================
-def estimate_distance(bbox, frame_width, frame_height):
-    """
-    Estimează distanța față de obiect pe baza dimensiunii bbox
-    (simplificare, bounding box mai mare = mai aproape)
-    """
-    x1, y1, x2, y2 = bbox
-    box_area = (x2 - x1) * (y2 - y1)
-    frame_area = frame_width * frame_height
-    distance_est = max(0.1, 100 * (1 - box_area / frame_area))
-    return round(distance_est, 2)
-
-# ===============================
 # DETECTOR
 # ===============================
 class Detector:
     def __init__(self, video_path=VIDEO_PATH, model_path=MODEL_PATH):
-        self.cap = cv2.VideoCapture(video_path)
-        if not self.cap.isOpened():
-            raise ValueError(f"Nu s-a putut deschide video-ul: {video_path}")
+        """
+        video_path=None: do not open a capture (caller supplies frames, e.g. main.py + UFLD).
+        Default VIDEO_PATH keeps backward compatibility for scripts that call Detector().
+        """
+        self.cap = None
+        if video_path is not None and str(video_path).strip() != "":
+            self.cap = cv2.VideoCapture(video_path)
+            if not self.cap.isOpened():
+                raise ValueError(f"Nu s-a putut deschide video-ul: {video_path}")
         self.model = YOLO(model_path)
         self.frame_id = 0
-        self.tracker_memory = {}
         self.next_id = 0
-
 
     def get_frame(self):
         ret, frame = self.cap.read()
@@ -53,10 +43,11 @@ class Detector:
         detections = []
         traffic_signs = []
 
+        frame_height, frame_width = frame.shape[:2]
+
         for r in results.boxes:
             cls_name = self.model.names[int(r.cls[0])]
             bbox = r.xyxy[0].tolist()
-            conf = float(r.conf[0])
             est_dist = self.estimate_distance(bbox)
             lateral_pos = self.get_lateral_position(frame, bbox)
 
@@ -73,16 +64,20 @@ class Detector:
                 traffic_signs.append(sign_map[cls_name])
                 continue
 
-            detection = {
+            detections.append({
                 "id": self.next_id,
                 "class": cls_name,
                 "bbox": bbox,
-                "confidence": conf,
                 "estimated_distance": est_dist,
                 "lateral_position": lateral_pos
-            }
-            detections.append(detection)
+            })
             self.next_id += 1
+
+        # Adaugam orientarea obiectelor fata de banda ego
+        lane_info = self.detect_lane_info(frame)
+        detections = self.annotate_orientation(
+            detections, lane_info, frame_width=frame_width
+        )
 
         return detections, traffic_signs
 
@@ -117,20 +112,23 @@ class Detector:
         else:
             return 0
 
-    def detect_lane_info(self, frame):
+    def detect_lane_info(self, frame, history_frames=5):
         """
-        Detectare simplificata benzi folosind OpenCV.
-        Returneaza dict cu num_lanes, curbe, is_main_road si current_lane.
+        Detectare benzi folosind OpenCV, histogramă și medie pe ultimele frame-uri.
+        history_frames: numarul de frame-uri pentru medie (stabilizare)
         """
+        if not hasattr(self, "_lane_history"):
+            self._lane_history = []
+
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5,5), 0)
         edges = cv2.Canny(blur, 50, 150)
 
         height, width = edges.shape
 
-        # ROI (doar partea de jos a imaginii)
+        # ROI
         mask = np.zeros_like(edges)
-        polygon = np.array([[ 
+        polygon = np.array([[
             (0, height),
             (width, height),
             (width, int(height*0.6)),
@@ -149,40 +147,32 @@ class Detector:
             maxLineGap=50
         )
 
-        left_lines = []
-        right_lines = []
         x_positions = []
-
         if lines is not None:
             for line in lines:
                 x1,y1,x2,y2 = line[0]
                 slope = (y2 - y1) / (x2 - x1 + 1e-6)
-
-                # ignoram linii aproape orizontale
                 if abs(slope) < 0.3 or abs(y2 - y1) < 30:
                     continue
+                x_positions.append((x1 + x2)/2)
 
-                x_positions.append((x1 + x2) / 2)
+        # Adaugam pozitiile x in istoric
+        self._lane_history.append(x_positions)
+        if len(self._lane_history) > history_frames:
+            self._lane_history.pop(0)
 
-                if slope < 0:
-                    left_lines.append(line)
-                else:
-                    right_lines.append(line)
+        # Facem media pozitiilor x pe ultimele frame-uri
+        all_x = [x for hist in self._lane_history for x in hist]
+        all_x.sort()
 
-        # Estimare numar benzi
-        if x_positions:
-            x_positions = sorted(x_positions)
-            # Aproximam benzile ca grupuri de linii
-            lane_thresh = width / 8  # distanta minima intre linii
-            lanes = [x_positions[0]]
-            for x in x_positions[1:]:
-                if x - lanes[-1] > lane_thresh:
-                    lanes.append(x)
-            num_lanes = len(lanes)
-        else:
-            num_lanes = 2
+        # Grupare linii apropiate
+        lanes = []
+        lane_thresh = width / 8
+        for x in all_x:
+            if not lanes or x - lanes[-1] > lane_thresh:
+                lanes.append(x)
 
-        # Limitam realist intre 2 si 5
+        num_lanes = len(lanes)
         num_lanes = min(max(num_lanes, 2), 5)
 
         # Curbe (medie slope)
@@ -195,20 +185,54 @@ class Detector:
             elif avg_slope < -0.2:
                 curve = {"direction": "left", "degrees": int(abs(avg_slope)*50)}
 
-        # Estimare banda ego (masina centrata)
+        # Banda ego (centrata)
         frame_center = width / 2
         lane_width = width / num_lanes
-        current_lane = int(frame_center // lane_width) + 1  # indexare de la 1
+        current_lane = int(frame_center // lane_width) + 1
+
+        # Drumuri adiacente
+        adjacent_lanes = []
+        if current_lane > 1:
+            adjacent_lanes.append({"side": "left", "angle": 0})
+        if current_lane < num_lanes:
+            adjacent_lanes.append({"side": "right", "angle": 0})
 
         return {
             "num_lanes": num_lanes,
             "curves": [curve] if curve else [],
             "is_main_road": num_lanes >= 3,
-            "current_lane": current_lane
+            "current_lane": current_lane,
+            "adjacent_lanes": adjacent_lanes
         }
 
+    def annotate_orientation(self, detections, lane_info, frame_width=None):
+        """
+        same = same carriageway (any lane same direction). opposite = other half of road
+        (typical undivided 4-lane: lanes 1–2 vs 3–4). n<=2: always same.
+        """
+        fw = float(frame_width if frame_width is not None else 1920)
+        n = max(int(lane_info.get("num_lanes", 2)), 1)
+        ego_lane = max(1, min(n, int(lane_info.get("current_lane", 1))))
+        ego_idx = ego_lane - 1
+
+        for d in detections:
+            bbox = d["bbox"]
+            cx = (bbox[0] + bbox[2]) / 2.0
+            lane_idx = int(np.clip((cx / max(fw, 1.0)) * n, 0, n - 1))
+
+            if n <= 2:
+                d["orientation"] = "same"
+                continue
+
+            ego_half = 0 if ego_idx < n / 2.0 else 1
+            obj_half = 0 if lane_idx < n / 2.0 else 1
+            d["orientation"] = "same" if ego_half == obj_half else "opposite"
+
+        return detections
+
     def release(self):
-        self.cap.release()
+        if self.cap is not None:
+            self.cap.release()
 
 
 # ===============================

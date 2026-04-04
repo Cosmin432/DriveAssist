@@ -21,13 +21,18 @@ export async function initEgoVehicle(scene) {
     cabin.position.set(0, 1.4, 0.1); cabin.castShadow = true; g.add(cabin);
     egoVehicle = g;
   }
+  /* X set in main.js from lane geometry; Z slightly ahead of camera focal area. */
   egoVehicle.position.set(0, 0, 2.5);
   scene.add(egoVehicle);
   return egoVehicle;
 }
 
+function normalizeClassName(className) {
+  return (className || '').toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+}
+
 export async function createObjectMesh(className) {
-  const cls = (className || '').toLowerCase();
+  const cls = normalizeClassName(className);
 
   try {
     if (cls === 'car' || cls === 'truck') {
@@ -38,7 +43,7 @@ export async function createObjectMesh(className) {
         rotationX: 1.6, rotationY: Math.PI, rotationZ: Math.PI/2,
       });
     }
-    if (cls === 'person') {
+    if (cls === 'person' || cls === 'pedestrian') {
       const model = await loadGLBModel('/models/person/stickman.glb');
       return prepareOBJModel(model, { scale: 10, color: 0x2e7d32, y: 0.2 });
     }
@@ -46,7 +51,35 @@ export async function createObjectMesh(className) {
     console.error('Model load error:', err);
   }
 
-  if (cls === 'stop_sign' || cls === 'stop sign') {
+  if (cls === 'traffic_light' || cls === 'trafficlight') {
+    const g = new THREE.Group();
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.1, 4, 10),
+      new THREE.MeshStandardMaterial({ color: 0x37474f })
+    );
+    pole.position.y = 2;
+    g.add(pole);
+    const housing = new THREE.Mesh(
+      new THREE.BoxGeometry(0.55, 1.35, 0.35),
+      new THREE.MeshStandardMaterial({ color: 0x263238 })
+    );
+    housing.position.y = 4.1;
+    g.add(housing);
+    const colors = [0xc62828, 0xf9a825, 0x2e7d32];
+    colors.forEach((col, i) => {
+      const bulb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.14, 12, 12),
+        new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.35 })
+      );
+      bulb.position.set(0, 4.5 - i * 0.38, 0.2);
+      g.add(bulb);
+    });
+    g.position.y = 0;
+    g.userData.targetPosition = new THREE.Vector3();
+    return g;
+  }
+
+  if (cls === 'stop_sign') {
     const g = new THREE.Group();
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.2, 12), new THREE.MeshStandardMaterial({ color: 0x9e9e9e }));
     pole.position.y = 1.1; g.add(pole);

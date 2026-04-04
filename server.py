@@ -10,8 +10,6 @@ import json
 import logging
 import os
 import time
-from pathlib import Path
-
 try:
     import websockets
     WEBSOCKETS_AVAILABLE = True
@@ -22,7 +20,6 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [server] %(message)s")
 log = logging.getLogger(__name__)
 
-OUTPUT_JSON = Path("output.json")
 BROADCAST_INTERVAL = 0.5  # seconds
 PORT = 8765
 
@@ -32,34 +29,32 @@ _current_state: dict = {
     "timestamp": 0.0,
     "frame": 0,
     "detections": [],
+    "lane_state": {
+        "lanes": [],
+        "lane_center_offset_px": 0.0,
+        "lane_confidence": 0.0,
+    },
     "decisions": {
         "brake": "none",
         "lane": "keep",
         "speed": "maintain",
         "risk": "low",
     },
+    "alert_triggers": {
+        "vehicle_ahead": False,
+        "stop_sign": False,
+        "red_traffic_light": False,
+    },
 }
 
 def update_state(new_state: dict) -> None:
-    """Called by main.py (Person A) to push new detection/decision data."""
+    """Called by main.py to push new detection/decision data (WebSocket only)."""
     global _current_state
     _current_state = new_state
-    _write_json_fallback(new_state)
 
 
 def get_state() -> dict:
     return _current_state
-
-
-# ─── JSON fallback (always write, even when WebSocket works) ──────────────────
-
-def _write_json_fallback(state: dict) -> None:
-    try:
-        tmp = OUTPUT_JSON.with_suffix(".tmp")
-        tmp.write_text(json.dumps(state, indent=2))
-        tmp.replace(OUTPUT_JSON)          # atomic replace — no partial reads
-    except Exception as e:
-        log.warning(f"Could not write output.json: {e}")
 
 
 # ─── WebSocket broadcast ──────────────────────────────────────────────────────
@@ -96,8 +91,18 @@ async def _broadcast_loop() -> None:
 
 
 async def _run_server() -> None:
-    log.info(f"WebSocket server listening on ws://localhost:{PORT}")
-    async with websockets.serve(_register, "0.0.0.0", PORT):
+    # 0.0.0.0: reachable as 127.0.0.1 from browser and from Vite's Node proxy.
+    # compression=None: avoids rare permessage-deflate issues with some clients.
+    host = os.environ.get("WS_HOST", "0.0.0.0")
+    log.info(f"WebSocket server listening on ws://127.0.0.1:{PORT} (bind {host})")
+    async with websockets.serve(
+        _register,
+        host,
+        PORT,
+        compression=None,
+        ping_interval=20,
+        ping_timeout=60,
+    ):
         await _broadcast_loop()
 
 
@@ -137,6 +142,8 @@ if __name__ == "__main__":
 
     import random, math
 
+    from output import write_snapshot
+
     async def _demo():
         frame = 0
         classes = ["car", "truck", "person", "stop_sign", "traffic_light"]
@@ -160,13 +167,24 @@ if __name__ == "__main__":
                     }
                     for i in range(random.randint(0, 3))
                 ],
+                "lane_state": {
+                    "lanes": [],
+                    "lane_center_offset_px": 0.0,
+                    "lane_confidence": 0.0,
+                },
                 "decisions": {
                     "brake": random.choice(brakes),
                     "lane": random.choice(lanes),
                     "speed": random.choice(speeds),
                     "risk": random.choice(risks),
                 },
+                "alert_triggers": {
+                    "vehicle_ahead": False,
+                    "stop_sign": False,
+                    "red_traffic_light": False,
+                },
             }
+            write_snapshot(state)
             update_state(state)
             await asyncio.sleep(BROADCAST_INTERVAL)
 
@@ -180,7 +198,31 @@ if __name__ == "__main__":
         print("Writing demo output.json only...")
         import random
         frame = 0
+        from output import write_snapshot
+
         while True:
             frame += 1
-            update_state({"timestamp": frame * 0.5, "frame": frame, "detections": [], "decisions": {"brake": "none", "lane": "keep", "speed": "maintain", "risk": "low"}})
+            st = {
+                "timestamp": frame * 0.5,
+                "frame": frame,
+                "detections": [],
+                "lane_state": {
+                    "lanes": [],
+                    "lane_center_offset_px": 0.0,
+                    "lane_confidence": 0.0,
+                },
+                "decisions": {
+                    "brake": "none",
+                    "lane": "keep",
+                    "speed": "maintain",
+                    "risk": "low",
+                },
+                "alert_triggers": {
+                    "vehicle_ahead": False,
+                    "stop_sign": False,
+                    "red_traffic_light": False,
+                },
+            }
+            write_snapshot(st)
+            update_state(st)
             time.sleep(BROADCAST_INTERVAL)

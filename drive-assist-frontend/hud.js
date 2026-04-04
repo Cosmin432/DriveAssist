@@ -2,6 +2,7 @@ export function initHUD() {
   const hud = document.createElement('div');
   hud.id = 'hud';
   hud.innerHTML = `
+    <div id="hud-alert" class="hud-alert" aria-live="assertive" hidden></div>
     <div id="hud-top-left"       class="hud-box">BRAKE: NONE</div>
     <div id="hud-top-center"     class="hud-box">SPEED: MAINTAIN</div>
     <div id="hud-top-right"      class="hud-box">LANE: KEEP</div>
@@ -32,14 +33,21 @@ export function updateHUD(data) {
   set('hud-top-right',   `LANE: ${(d.lane   || 'keep').toUpperCase()}`);
   set('hud-bottom-left', `RISK: ${(d.risk   || 'low').toUpperCase()}`,      `hud-box risk-${d.risk || 'low'}`);
 
-  // Lane info box (current lane / total)
+  // Lane info box (current lane / total + UFLD metrics when present)
   const laneEl = document.getElementById('hud-lane-info');
   if (laneEl) {
     if (l) {
       const current  = l.current_lane ?? '?';
       const total    = l.num_lanes    ?? '?';
       const mainRoad = l.is_main_road ? ' • MAIN' : '';
-      laneEl.textContent = `LANE ${current}/${total}${mainRoad}`;
+      let extra = '';
+      if (typeof l.lane_center_offset_px === 'number') {
+        extra += ` • off ${l.lane_center_offset_px.toFixed(0)}px`;
+      }
+      if (typeof l.lane_confidence === 'number') {
+        extra += ` • conf ${l.lane_confidence.toFixed(2)}`;
+      }
+      laneEl.textContent = `LANE ${current}/${total}${mainRoad}${extra}`;
       laneEl.style.display = 'block';
     } else {
       laneEl.style.display = 'none';
@@ -47,6 +55,54 @@ export function updateHUD(data) {
   }
 
   updateLaneIndicator(d.lane || 'keep', l);
+  updateDriveAlert(data);
+}
+
+let _alertHideTimer = null;
+
+/**
+ * Popup brake / viteză doar dacă backend raportează una din cauze:
+ * semafor roșu, STOP, vehicul în față (alert_triggers).
+ */
+function updateDriveAlert(data) {
+  const el = document.getElementById('hud-alert');
+  if (!el) return;
+
+  const d = data.decisions ?? {};
+  const t = data.alert_triggers ?? {};
+  const eligible =
+    t.vehicle_ahead === true ||
+    t.stop_sign === true ||
+    t.red_traffic_light === true;
+
+  const strong = d.brake === 'strong';
+  const light = d.brake === 'light';
+  const dec = d.speed === 'decrease';
+  const showBrakeSpeed = eligible && (strong || light || dec);
+
+  if (showBrakeSpeed) {
+    clearTimeout(_alertHideTimer);
+    el.hidden = false;
+    if (t.red_traffic_light || t.stop_sign) {
+      el.className = 'hud-alert show alert-strong';
+      el.textContent = t.stop_sign ? '⚠ STOP — oprește' : '⚠ Semafor roșu — frână';
+    } else {
+      el.className = 'hud-alert show alert-warn';
+      el.textContent = '⚠ Vehicul în față — redu viteza';
+    }
+    return;
+  }
+
+  if (!el.classList.contains('show')) {
+    el.hidden = true;
+    return;
+  }
+  clearTimeout(_alertHideTimer);
+  _alertHideTimer = setTimeout(() => {
+    el.classList.remove('show', 'alert-strong', 'alert-warn');
+    el.textContent = '';
+    el.hidden = true;
+  }, 600);
 }
 
 function updateLaneIndicator(lane, laneInfo) {
