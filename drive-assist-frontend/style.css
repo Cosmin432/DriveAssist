@@ -1,0 +1,150 @@
+/* ─── Reset & Base ──────────────────────────────────────────────────────────── */
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: 'Rajdhani', 'Barlow Condensed', Arial, sans-serif;
+  background: #0d0f14;
+}
+
+canvas {
+  display: block;
+}
+
+/* ─── HUD Layout ────────────────────────────────────────────────────────────── */
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ─── HUD Boxes (decision indicators) ──────────────────────────────────────── */
+.hud-box {
+  position: absolute;
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: rgba(10, 12, 18, 0.72);
+  color: #e8eaf0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  min-width: 140px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(8px);
+  transition: background 0.35s ease, border-color 0.35s ease, color 0.35s ease;
+}
+
+#hud-top-left   { top: 16px; left: 16px; }
+#hud-top-center { top: 16px; left: 50%; transform: translateX(-50%); }
+#hud-top-right  { top: 16px; right: 16px; }
+#hud-bottom-left { bottom: 88px; left: 16px; }
+
+/* Brake states */
+.brake-none   { background: rgba(20, 22, 30, 0.72); border-color: rgba(255,255,255,0.08); color: #9aa0b0; }
+.brake-light  { background: rgba(180, 90, 0, 0.80);  border-color: rgba(255,152,0,0.5);   color: #ffe082; }
+.brake-strong { background: rgba(160, 20, 20, 0.88); border-color: rgba(244,67,54,0.6);   color: #ff8a80; }
+
+/* Risk states */
+.risk-low    { background: rgba(20, 90, 30, 0.78);  border-color: rgba(76,175,80,0.5);  color: #a5d6a7; }
+.risk-medium { background: rgba(180, 90, 0, 0.80);  border-color: rgba(255,152,0,0.5);  color: #ffe082; }
+.risk-high   { background: rgba(160, 20, 20, 0.88); border-color: rgba(244,67,54,0.6);  color: #ff8a80; }
+
+/* ─── Scenario Banner ───────────────────────────────────────────────────────── */
+.hud-scenario {
+  position: absolute;
+  bottom: 88px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.scen-index {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: rgba(255,255,255,0.35);
+  font-weight: 600;
+}
+
+.scen-name {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 2.5px;
+  color: #ffffff;
+  text-transform: uppercase;
+  text-shadow: 0 0 20px rgba(0,0,0,0.8);
+}
+
+.scen-desc {
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.5px;
+  color: rgba(200,210,230,0.7);
+  max-width: 340px;
+  text-align: center;
+}
+
+/* ─── Demo Controls ─────────────────────────────────────────────────────────── */
+.hud-demo-controls {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(10, 12, 18, 0.75);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 30px;
+  padding: 8px 16px;
+  backdrop-filter: blur(10px);
+  pointer-events: all;
+}
+
+.hud-demo-controls button {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.65);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.2s, background 0.2s;
+  line-height: 1;
+}
+
+.hud-demo-controls button:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.10);
+}
+
+#demo-dots {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.25);
+  cursor: pointer;
+  transition: background 0.25s, transform 0.25s;
+  pointer-events: all;
+}
+
+.dot.active {
+  background: #ffffff;
+  transform: scale(1.25);
+}
+
+.dot:hover {
+  background: rgba(255,255,255,0.65);
+}

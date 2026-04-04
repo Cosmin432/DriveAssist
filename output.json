@@ -1,0 +1,24 @@
+{
+  "timestamp": 31.0,
+  "frame": 62,
+  "detections": [
+    {
+      "id": 1,
+      "class": "person",
+      "distance_m": 8.0,
+      "position": "front"
+    },
+    {
+      "id": 2,
+      "class": "stop_sign",
+      "distance_m": 15.0,
+      "position": "front"
+    }
+  ],
+  "decisions": {
+    "brake": "strong",
+    "lane": "keep",
+    "speed": "decrease",
+    "risk": "high"
+  }
+}

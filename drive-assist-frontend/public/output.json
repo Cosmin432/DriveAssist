@@ -1,0 +1,15 @@
+{
+  "timestamp": 1.5,
+  "frame": 45,
+  "detections": [
+    { "id": 1, "class": "car", "distance_m": 12.5, "position": "front_left" },
+    { "id": 2, "class": "person", "distance_m": 8.0, "position": "front_right" },
+    { "id": 3, "class": "stop_sign", "distance_m": 20.0, "position": "left" }
+  ],
+  "decisions": {
+    "brake": "light",
+    "lane": "change_left",
+    "speed": "decrease",
+    "risk": "medium"
+  }
+}
