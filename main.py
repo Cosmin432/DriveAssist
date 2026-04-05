@@ -139,6 +139,48 @@ def _rich_lane_info(lane: dict, detections: list) -> dict:
     num_lanes = int(min(5, max(2, num_lanes)))
 
     lane_mid_x = fw * 0.5 + off
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     lane_w_px = fw / float(num_lanes)
     cur0 = int(lane_mid_x / max(lane_w_px, 1e-6))
     cur0 = max(0, min(num_lanes - 1, cur0))

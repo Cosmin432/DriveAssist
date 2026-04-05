@@ -2,7 +2,6 @@ let ws = null;
 let wsConnected = false;
 
 function wsUrl() {
-  // Dev: same host:port as Vite → proxied to Python (see vite.config.js).
   if (import.meta.env.DEV) {
     const p = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${p}//${window.location.host}/ws`;
@@ -12,7 +11,12 @@ function wsUrl() {
   return `ws://${host}:${port}`;
 }
 
-export function connectWebSocket(onData, onConnected) {
+/**
+ * @param {function} onData       - called with parsed JSON payload
+ * @param {function} [onConnected] - called when socket opens
+ * @param {function} [onDisconnected] - called when socket closes / errors
+ */
+export function connectWebSocket(onData, onConnected, onDisconnected) {
   try {
     const url = wsUrl();
     ws = new WebSocket(url);
@@ -34,17 +38,18 @@ export function connectWebSocket(onData, onConnected) {
 
     ws.onclose = () => {
       wsConnected = false;
-      setTimeout(() => connectWebSocket(onData, onConnected), 3000);
+      onDisconnected?.();
+      setTimeout(() => connectWebSocket(onData, onConnected, onDisconnected), 3000);
     };
 
-    ws.onerror = (ev) => {
+    ws.onerror = () => {
       wsConnected = false;
-      console.warn('[WS] error (will retry):', url, ev);
-      // Do not call ws.close() here — it can race the handshake and hide the real error.
+      onDisconnected?.();
     };
   } catch (e) {
     wsConnected = false;
     console.error('[WS] connect exception:', e);
+    onDisconnected?.();
   }
 }
 

@@ -1,89 +1,12 @@
 {
-  "timestamp": 497.532,
-  "frame": 5394,
-  "detections": [
-    {
-      "id": 26119,
-      "class": "car",
-      "distance_m": 14.77,
-      "position": "right",
-      "bbox": [
-        461.2013854980469,
-        314.615478515625,
-        639.72021484375,
-        450.054931640625
-      ],
-      "width": 178.51882934570312,
-      "height": 135.439453125,
-      "center": [
-        550.4608001708984,
-        382.335205078125
-      ],
-      "orientation": "same"
-    },
-    {
-      "id": 26120,
-      "class": "car",
-      "distance_m": 49.65,
-      "position": "right",
-      "bbox": [
-        378.7503967285156,
-        351.2027587890625,
-        442.3018493652344,
-        391.486328125
-      ],
-      "width": 63.55145263671875,
-      "height": 40.2835693359375,
-      "center": [
-        410.526123046875,
-        371.34454345703125
-      ],
-      "orientation": "same"
-    },
-    {
-      "id": 26121,
-      "class": "car",
-      "distance_m": 71.18,
-      "position": "front",
-      "bbox": [
-        303.8911437988281,
-        354.5328369140625,
-        345.4917297363281,
-        382.63189697265625
-      ],
-      "width": 41.6005859375,
-      "height": 28.09906005859375,
-      "center": [
-        324.6914367675781,
-        368.5823669433594
-      ],
-      "orientation": "same"
-    },
-    {
-      "id": 26122,
-      "class": "traffic light",
-      "distance_m": 87.93,
-      "position": "front",
-      "bbox": [
-        356.46380615234375,
-        239.12451171875,
-        365.78753662109375,
-        261.86981201171875
-      ],
-      "width": 9.32373046875,
-      "height": 22.74530029296875,
-      "center": [
-        361.12567138671875,
-        250.49716186523438
-      ],
-      "orientation": "same"
-    }
-  ],
+  "timestamp": 82.813,
+  "frame": 1963,
+  "detections": [],
   "lane_state": {
     "lanes": [],
     "lane_center_offset_px": 0.0,
     "lane_confidence": 0.2,
-    "num_tracked_lanes": 1,
+    "num_tracked_lanes": 0,
     "ego_lane_width_px": null
   },
   "lane_info": {
@@ -93,7 +16,7 @@
     "lane_center_offset_px": 0.0,
     "lane_confidence": 0.2,
     "ego_lane_width_px": null,
-    "num_tracked_lanes": 1
+    "num_tracked_lanes": 0
   },
   "decisions": {
     "brake": "none",
